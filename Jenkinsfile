@@ -1,79 +1,44 @@
-currentBuild.displayName = "Final_Demo # "+currentBuild.number
-
-   def getDockerTag(){
-        def tag = sh script: 'git rev-parse HEAD', returnStdout: true
-        return tag
-        }
-        
 
 pipeline{
-        agent any  
-        environment{
-	    Docker_tag = getDockerTag()
-        }
-        
-        stages{
 
+   agent any
+	environment {
+		DOCKERHUB_CREDENTIALS=credentials('dockerhub')
+	}
+	
+	stages {
 
-              stage('Quality Gate Statuc Check'){
+		stage('gitclone') {
 
-               agent {
-                docker {
-                image 'maven'
-                args '-v $HOME/.m2:/root/.m2'
-                }
-            }
-                  steps{
-                      script{
-                      withSonarQubeEnv('sonarserver') { 
-                      sh "mvn sonar:sonar"
-                       }
-                      timeout(time: 1, unit: 'HOURS') {
-                      def qg = waitForQualityGate()
-                      if (qg.status != 'OK') {
-                           error "Pipeline aborted due to quality gate failure: ${qg.status}"
-                      }
-                    }
-		    sh "mvn clean install"
-                  }
-                }  
-              }
-
-
-
-              stage('build')
-                {
-              steps{
-                  script{
-		 sh 'cp -r ../devops-training@2/target .'
-                   sh 'docker build . -t deekshithsn/devops-training:$Docker_tag'
-		   withCredentials([string(credentialsId: 'docker_password', variable: 'docker_password')]) {
-				    
-				  sh 'docker login -u deekshithsn -p $docker_password'
-				  sh 'docker push deekshithsn/devops-training:$Docker_tag'
-			}
-                       }
-                    }
-                 }
-		 
-		stage('ansible playbook'){
-			steps{
-			 	script{
-				    sh '''final_tag=$(echo $Docker_tag | tr -d ' ')
-				     echo ${final_tag}test
-				     sed -i "s/docker_tag/$final_tag/g"  deployment.yaml
-				     '''
-				    ansiblePlaybook become: true, installation: 'ansible', inventory: 'hosts', playbook: 'ansible.yaml'
-				}
+		      steps {
+		         git 'https://github.com/theitern/sample-web-application.git'
+		      }
+		}
+		
+		stage('Build') {
+			steps {
+			
+			   sh 'docker build -t akinaregbesola/class_app:latest .'
 			}
 		}
 		
-	
+		stage('Login') {
 		
-               }
-	       
-	       
-	       
-	      
-    
-}
+			steps {
+			   sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --passwd-stdin'
+			}
+		}
+
+		stage('Push') {
+			
+			steps {
+			   sh 'docker push akinaregbesola/class_app:latest'
+			}
+		}
+		}
+	
+	post {
+	    always {
+		sh 'docker logout'
+	    }
+
